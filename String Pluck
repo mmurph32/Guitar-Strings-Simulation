@@ -1,0 +1,87 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Thu Jul 25 14:15:21 2024
+
+@author: brian
+"""
+
+import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib import animation
+from matplotlib.animation import PillowWriter
+import numba
+from numba import jit
+from tqdm import tqdm
+import sounddevice as sd
+
+Nx = 101
+Nt = 500000
+L = 0.86 # 0.7
+dx = L/(Nx-1)
+f = 46.25
+c = 2*f*L
+dt = 5e-6
+l = 2e-6 #stiffness 2e-6
+gamma = 4.6e-5 #gamma = 2.6e-5
+
+ya = np.linspace(0, 0.01, 70)
+yb = np.linspace(0.01, 0, 31)
+y0 = np.concatenate([ya, yb])
+
+sol = np.zeros((Nt, Nx))
+
+sol[0] = y0
+sol[1] = y0
+
+numba.jit("f8[:,:}(f8[:,:}, i8, i8, f8, f8, f8, f8, f8)", nopython=True, nogil=True)
+
+def compute_d(d, times, length, dt, dx, l, gamma):
+    for t in tqdm(range(1, times-1)):
+        for i in (range(2, length-2)):
+            outer_fact = (1/(c**2 * dt**2) + gamma/(2*dt))**(-1)
+            p1 = 1/(dx**2) * (d[t][i+1] - 2*d[t][i] + d[t][i-1])
+            p2 = 1/(c**2 * dt**2) * (d[t-1][i] - 2*d[t][i])
+            p3 = gamma/(2*dt) * d[t-1][i]
+            p4 = (l**2)/(dx**4) * (d[t][i-2] - 4*d[t][i-1] + 4*d[t][i] - 4*d[t][i+1] + d[t][i+2])
+            d[t+1][i] = outer_fact * (p1 - p2 + p3 - p4)
+    return d
+
+sol = compute_d(sol, Nt, Nx, dt, dx, l, gamma)
+
+plt.plot(sol[500])
+plt.plot(sol[2000])
+plt.show()
+
+#print(1/dt) fps
+
+len(sol[::10, :]) #use every 10 frames
+
+def animate(i):
+    ax.clear()
+    ax.plot(sol[i*10])
+    ax.set_ylim(-0.01, 0.01)
+    
+#fig, ax = plt.subplots(1,1)
+#ax.set_ylim(-0.01, 0.01)
+#ani = animation.FuncAnimation(fig, animate, frames=500, interval=50)
+#ani.save('string.gif',writer='pillow',fps=20)
+
+def get_integral(n):
+    sin_arr = np.sin(n*np.pi*np.linspace(0, 1, 101))
+    return np.array([sum(sin_arr*s) for s in sol])
+
+hms = [get_integral(n) for n in range(10)]
+
+tot = sum(hms)[::10]
+tot = tot.astype(np.float32)
+
+plt.plot(tot[0:1000])
+plt.show()
+
+from scipy.io import wavfile
+from IPython.display import Audio
+
+wavfile.write('Gb1_basssound.wave',20000,tot)
+
+#Audio('sound.wav') for jupyter
